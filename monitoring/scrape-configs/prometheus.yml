@@ -1,0 +1,77 @@
+# Prometheus scrape configuration for XPS (obs-bounce) + Fitlet2 (bounce) monitoring
+# Scrape via Tailscale IPs
+
+- job_name: xps-node-exporter
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.81.136.62:9100
+      labels:
+        instance: obs-bounce
+        device: xps
+
+- job_name: xps-nginx-exporter
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.81.136.62:9113
+      labels:
+        instance: obs-bounce
+        device: xps
+
+- job_name: xps-nginx-stub-status
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  metrics_path: /nginx_status
+  static_configs:
+    - targets:
+        - 100.81.136.62:18080
+      labels:
+        instance: obs-bounce
+        device: xps
+        role: nginx-stub
+
+- job_name: xps-crafty-metrics
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.81.136.62:9201
+      labels:
+        instance: obs-bounce
+        device: xps
+        role: crafty-exporter
+
+- job_name: xps-minecraft-metrics
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.81.136.62:9202
+      labels:
+        instance: obs-bounce
+        device: xps
+        role: minecraft-exporter
+
+- job_name: bounce-node-exporter
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.118.128.95:9100
+      labels:
+        instance: bounce
+        device: fitlet2
+
+- job_name: bounce-smart-textfile
+  scrape_interval: 30s
+  scrape_timeout: 25s
+  static_configs:
+    - targets:
+        - 100.118.128.95:9100
+      labels:
+        instance: bounce
+        device: fitlet2
+        role: smart-textfile
