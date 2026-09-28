@@ -1,0 +1,437 @@
+apiVersion: 1
+groups:
+  - name: platform-alerts
+    folder: Platform
+    interval: 30s
+    rules:
+      # --- Node down ---
+      - uid: node-down
+        title: Node Down
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up == 0
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Node {{ $labels.instance }} is down"
+          description: "Prometheus has not received any scrape from {{ $labels.instance }} for 5 minutes."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Node disk > 85% ---
+      - uid: node-disk-high
+        title: Node Disk > 85%
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100) > 85"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Disk usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}"
+          description: "Root filesystem on {{ $labels.instance }} is {{ $value | humanizePercentage }} full."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Node disk > 95% ---
+      - uid: node-disk-critical
+        title: Node Disk > 95%
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100) > 95"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "CRITICAL: Disk usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}"
+          description: "Root filesystem on {{ $labels.instance }} is {{ $value | humanizePercentage }} full — immediate action required."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Pod crashlooping (restart rate) ---
+      - uid: pod-crashlooping
+        title: Pod Crashlooping
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "increase(kube_pod_container_status_restarts_total[15m]) > 3"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ $value }} times in 15 minutes"
+          description: "Pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) is crashlooping — {{ $value }} restarts in the last 15 minutes."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Pod not ready ---
+      - uid: pod-not-ready
+        title: Pod Not Ready
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "kube_pod_status_phase{phase=\"Pending\"} > 0"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is stuck in Pending"
+          description: "Pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) has been in Pending phase for 10+ minutes."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Deployment not available ---
+      - uid: deployment-not-available
+        title: Deployment Not Available
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "kube_deployment_status_replicas_available < kube_deployment_spec_replicas"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Deployment {{ $labels.deployment }} in {{ $labels.namespace }} is under-replicated"
+          description: "Deployment {{ $labels.deployment }} (namespace {{ $labels.namespace }}) has {{ $value }} available replicas vs {{ $labels.desired }} desired."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Certificate expiring < 7 days ---
+      - uid: cert-expiring-7d
+        title: Certificate Expiring < 7 Days
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "certmanager_certificate_expiration_timestamp_seconds - time() < 604800"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Certificate {{ $labels.certificate }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}"
+          description: "Certificate {{ $labels.certificate }} (namespace {{ $labels.namespace }}) expires soon — {{ $value | humanizeDuration }} remaining."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Certificate expiring < 24 hours ---
+      - uid: cert-expiring-24h
+        title: Certificate Expiring < 24 Hours
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "certmanager_certificate_expiration_timestamp_seconds - time() < 86400"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "CRITICAL: Certificate {{ $labels.certificate }} expires in {{ $value | humanizeDuration }}"
+          description: "Certificate {{ $labels.certificate }} (namespace {{ $labels.namespace }}) expires in less than 24 hours — renew immediately."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Certificate expired ---
+      - uid: cert-expired
+        title: Certificate Expired
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "certmanager_certificate_expiration_timestamp_seconds - time() < 0"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: "Certificate {{ $labels.certificate }} has EXPIRED"
+          description: "Certificate {{ $labels.certificate }} (namespace {{ $labels.namespace }}) expired {{ $value | humanizeDuration }} ago. TLS is broken."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Prometheus down ---
+      - uid: prometheus-down
+        title: Prometheus Down
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "up{job=\"prometheus-operated\"} == 0"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Prometheus is down ({{ $labels.instance }})"
+          description: "Prometheus instance {{ $labels.instance }} is not responding to scrapes."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Traefik 5xx rate high ---
+      - uid: traefik-5xx-high
+        title: Traefik 5xx Rate High
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(traefik_requests_total{code=~\"5..\"}[5m])) / sum(rate(traefik_requests_total[5m])) > 0.05"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Traefik 5xx error rate is {{ $value | humanizePercentage }}"
+          description: "More than 5% of requests to Traefik are returning 5xx errors."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Traefik downtime ---
+      - uid: traefik-down
+        title: Traefik Down
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "up{job=\"traefik\"} == 0"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Traefik ingress is down ({{ $labels.instance }})"
+          description: "Traefik instance {{ $labels.instance }} is not responding."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Velero backup failed ---
+      - uid: velero-backup-failed
+        title: Velero Backup Failed
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "velero_backup_status{status=\"Failed\"} == 1"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Velero backup {{ $labels.name }} has FAILED"
+          description: "Velero backup {{ $labels.name }} in namespace {{ $labels.namespace }} has failed. Check Velero logs."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Velero backup storage unavailable ---
+      - uid: velero-storage-unavailable
+        title: Velero Backup Storage Unavailable
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "velero_backup_storage_location_status{status!=\"Available\"} == 1"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Velero backup storage location is unavailable"
+          description: "Velero cannot write backups — the backup storage location is not Available."
+        labels:
+          severity: critical
+          team: platform
+
+      # --- Gatekeeper high denial rate ---
+      - uid: gatekeeper-high-denial-rate
+        title: Gatekeeper High Denial Rate
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(gatekeeper_admission_controller_admission_request_total{rejection_reason!=\"\"}[5m])) / sum(rate(gatekeeper_admission_controller_admission_request_total[5m])) > 0.1"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Gatekeeper denial rate is {{ $value | humanizePercentage }}"
+          description: "More than 10% of admission requests are being denied by Gatekeeper policy."
+        labels:
+          severity: warning
+          team: platform
+
+      # --- Alertmanager down (if deployed later) ---
+      - uid: alertmanager-down
+        title: Alertmanager Down
+        condition: A
+        data:
+          - refId: A
+            queryType: instant
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "up{job=\"alertmanager\"} == 0"
+              instant: false
+              intervalMs: 1
+              maxDataPoints: 0
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Alertmanager is down ({{ $labels.instance }})"
+          description: "Alertmanager instance {{ $labels.instance }} is not responding."
+        labels:
+          severity: critical
+          team: platform
