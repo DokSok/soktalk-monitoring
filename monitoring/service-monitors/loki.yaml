@@ -1,0 +1,20 @@
+# ServiceMonitor for Loki — scrapes Loki's own metrics (port 3100)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+  endpoints:
+  - port: http-metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - loki
