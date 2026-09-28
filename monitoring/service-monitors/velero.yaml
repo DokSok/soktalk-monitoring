@@ -1,0 +1,21 @@
+# ServiceMonitor for Velero — scrapes backup metrics (port 8085, path /metrics)
+# Requires: Velero deployment with --enable-metrics flag and --metrics-address=:8085
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: velero
+  namespace: monitoring
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: velero
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - velero
