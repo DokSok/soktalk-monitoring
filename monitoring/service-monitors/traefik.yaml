@@ -1,0 +1,16 @@
+# ServiceMonitor for Traefik (scrapes via traefik Service, port metrics:9100 — after HelmChartConfig adds the port)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: traefik
+  namespace: kube-system
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
