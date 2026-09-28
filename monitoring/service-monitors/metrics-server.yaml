@@ -1,0 +1,19 @@
+# ServiceMonitor for metrics-server (scrapes via metrics-server Service, port https:443)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-server
+  namespace: kube-system
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+  endpoints:
+  - port: https
+    interval: 30s
+    scrapeTimeout: 10s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
