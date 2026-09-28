@@ -1,0 +1,19 @@
+# ServiceMonitor for Node Exporter — scrapes host-level metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - monitoring
