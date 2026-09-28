@@ -1,0 +1,16 @@
+# ServiceMonitor for Prometheus Operator (scrapes via prometheus-operator Service, port http:8080)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prometheus-operator
+  namespace: default
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-operator
+  endpoints:
+  - port: http
+    interval: 30s
+    scrapeTimeout: 10s
