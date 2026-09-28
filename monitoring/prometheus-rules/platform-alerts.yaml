@@ -1,0 +1,564 @@
+# PrometheusRule — alerts for the DevOps Platform
+# Severity levels: critical (immediate action), warning (investigate soon), info (awareness)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-alerts
+  namespace: monitoring
+  labels:
+    app: k8s
+spec:
+  groups:
+  # ──────────────────────────────────────────────────────────────
+  # 1. NODE / HOST LEVEL
+  # ──────────────────────────────────────────────────────────────
+  - name: node.rules
+    rules:
+    - alert: NodeDown
+      expr: up{job="node-exporter"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} is down"
+        description: "Node exporter on {{ $labels.instance }} has not been reachable for more than 5 minutes."
+
+    - alert: NodeDiskPressure
+      expr: |
+        (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 > 85
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} disk near capacity"
+        description: "Root filesystem on {{ $labels.instance }} is {{ $value | humanizePercentage }} full."
+
+    - alert: NodeDiskCritical
+      expr: |
+        (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 > 95
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} disk critically full"
+        description: "Root filesystem on {{ $labels.instance }} is {{ $value | humanizePercentage }} full — immediate action needed."
+
+    - alert: NodeMemoryPressure
+      expr: |
+        (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} memory near capacity"
+        description: "Memory usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}."
+
+    - alert: NodeMemoryCritical
+      expr: |
+        (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 95
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} memory critically low"
+        description: "Memory usage on {{ $labels.instance }} is {{ $value | humanizePercentage }} — pods may be evicted."
+
+    - alert: NodeCPUHigh
+      expr: |
+        100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 90
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Node {{ $labels.instance }} CPU utilization high"
+        description: "CPU usage on {{ $labels.instance }} is {{ $value | humanizePercentage }} for more than 15 minutes."
+
+  # ──────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────
+  - name: kubernetes.rules
+    rules:
+    - alert: KubePodCrashLooping
+      expr: |
+        increase(kube_pod_container_status_restarts_total[15m]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Pod {{ $labels.pod }} is crash-looping"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ $value }} times in 15 minutes."
+
+    - alert: KubePodPending
+      expr: |
+        kube_pod_status_phase{phase="Pending"} > 0
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Pod {{ $labels.pod }} is pending"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been Pending for more than 15 minutes."
+
+    - alert: KubeDeploymentNotAvailable
+      expr: |
+        kube_deployment_status_replicas_available < kube_deployment_spec_replicas
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Deployment {{ $labels.deployment }} not fully available"
+        description: "Deployment {{ $labels.deployment }} in {{ $labels.namespace }} has {{ $value }} available replicas out of {{ $labels.exported_deployment_replicas }} desired."
+
+    - alert: KubeDaemonSetRolloutStuck
+      expr: |
+        kube_daemonset_status_number_unavailable > 0
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "DaemonSet {{ $labels.daemonset }} has unavailable pods"
+        description: "DaemonSet {{ $labels.daemonset }} in {{ $labels.namespace }} has {{ $value }} unavailable pods."
+
+    - alert: KubeStatefulSetNotAvailable
+      expr: |
+        kube_statefulset_status_replicas_ready < kube_statefulset_status_replicas
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "StatefulSet {{ $labels.statefulset }} not fully ready"
+        description: "StatefulSet {{ $labels.statefulset }} in {{ $labels.namespace }} has {{ $value }} ready replicas out of {{ $labels.exported_statefulset_replicas }}."
+
+    - alert: KubePersistentVolumeFull
+      expr: |
+        (1 - kube_persistentvolume_status_capacity_bytes / kube_persistentvolumeclaim_resource_requests_storage_bytes) * 100 > 85
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "PersistentVolume {{ $labels.persistentvolume }} near capacity"
+        description: "Volume {{ $labels.persistentvolume }} is {{ $value | humanizePercentage }} full."
+
+    - alert: KubePersistentVolumeFullCritical
+      expr: |
+        (1 - kube_persistentvolume_status_capacity_bytes / kube_persistentvolumeclaim_resource_requests_storage_bytes) * 100 > 95
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "PersistentVolume {{ $labels.persistentvolume }} critically full"
+        description: "Volume {{ $labels.persistentvolume }} is {{ $value | humanizePercentage }} full — write operations may fail."
+
+    - alert: KubeJobFailed
+      expr: |
+        kube_job_status_failed > 0
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Kubernetes Job {{ $labels.job_name }} failed"
+        description: "Job {{ $labels.job_name }} in namespace {{ $labels.namespace }} has failed."
+
+  # ──────────────────────────────────────────────────────────────
+  # 3. CONTAINER / WORKLOAD RESOURCE USAGE
+  # ──────────────────────────────────────────────────────────────
+  - name: container.rules
+    rules:
+    - alert: ContainerMemoryUsageHigh
+      expr: |
+        (sum(container_memory_working_set_bytes{container!=""}) by (pod, namespace))
+        / (sum(kube_pod_container_resource_limits_memory_bytes{container!=""}) by (pod, namespace)) * 100 > 85
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Container {{ $labels.pod }} memory usage high"
+        description: "Container {{ $labels.pod }} in {{ $labels.namespace }} is using {{ $value | humanizePercentage }} of its memory limit."
+
+    - alert: ContainerCPUThrottling
+      expr: |
+        sum(rate(container_cpu_cfs_throttled_seconds_total[5m])) by (pod, namespace)
+        / sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, namespace) * 100 > 25
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Container {{ $labels.pod }} CPU throttling high"
+        description: "Container {{ $labels.pod }} in {{ $labels.namespace }} is throttled {{ $value | humanizePercentage }} of the time."
+
+  # ──────────────────────────────────────────────────────────────
+  # 4. TRAEFIK / INGRESS
+  # ──────────────────────────────────────────────────────────────
+  - name: ingress.rules
+    rules:
+    - alert: TraefikHighErrorRate
+      expr: |
+        sum(rate(traefik_requests_total{traefik_route_status_code=~"5.."}[5m]))
+        / sum(rate(traefik_requests_total[5m])) * 100 > 5
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Traefik error rate is high"
+        description: "Traefik is returning 5xx errors for {{ $value | humanizePercentage }} of requests."
+
+    - alert: TraefikHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(traefik_request_duration_seconds_bucket[5m])) by (le)) > 2
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Traefik p95 latency is high"
+        description: "Traefik p95 response time is {{ $value }}s — users may experience slow responses."
+
+    - alert: TraefikHigh4xxRate
+      expr: |
+        sum(rate(traefik_requests_total{traefik_route_status_code=~"4.."}[5m]))
+        / sum(rate(traefik_requests_total[5m])) * 100 > 20
+      for: 15m
+      labels:
+        severity: info
+        team: platform
+      annotations:
+        summary: "Traefik 4xx error rate elevated"
+        description: "Traefik is returning 4xx errors for {{ $value | humanizePercentage }} of requests."
+
+    - alert: TraefikTargetDown
+      expr: |
+        sum(up{job="traefik"}) < count(count by (instance) (up{job="traefik"}))
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Traefik targets are down"
+        description: "Some Traefik scrape targets are not responding."
+
+    - alert: TraefikPodNotReady
+      expr: |
+        sum(kube_pod_status_phase{phase="Running", pod=~"traefik-.*"}) < 2
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Traefik pods are not healthy"
+        description: "Traefik has fewer than 2 Running pods — ingress may be degraded."
+
+  # ──────────────────────────────────────────────────────────────
+  # 5. CERTIFICATE MANAGEMENT (cert-manager)
+  # ──────────────────────────────────────────────────────────────
+  - name: certificates.rules
+    rules:
+    - alert: CertManagerCertExpiringSoon
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < 86400 * 30
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Certificate {{ $labels.cert_name }} expiring within 30 days"
+        description: "Certificate {{ $labels.cert_name }} in {{ $labels.namespace }} expires in less than 30 days."
+
+    - alert: CertManagerCertExpiringCritical
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < 86400 * 7
+      for: 1h
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Certificate {{ $labels.cert_name }} expiring within 7 days"
+        description: "Certificate {{ $labels.cert_name }} in {{ $labels.namespace }} expires in less than 7 days — renewal failure may cause outages."
+
+    - alert: CertManagerCertExpiringUrgent
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < 86400 * 3
+      for: 30m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Certificate {{ $labels.cert_name }} expiring within 3 days"
+        description: "Certificate {{ $labels.cert_name }} in {{ $labels.namespace }} expires in less than 3 days — immediate renewal needed."
+
+    - alert: CertManagerCertNotReady
+      expr: certmanager_certificate_status != "Ready"
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Certificate {{ $labels.cert_name }} is not Ready"
+        description: "Certificate {{ $labels.cert_name }} in {{ $labels.namespace }} has status {{ $labels.certmanager_certificate_status }} for more than 1 hour."
+
+    - alert: CertManagerIssuerNotReady
+      expr: certmanager_issuer_status != "Ready"
+      for: 1h
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Issuer {{ $labels.issuer_name }} is not Ready"
+        description: "Issuer {{ $labels.issuer_name }} in {{ $labels.namespace }} has status {{ $labels.certmanager_issuer_status }} — all certificates using this issuer may fail to renew."
+
+    - alert: CertManagerRenewalFailed
+      expr: |
+        increase(certmanager_certificate_renewal_timestamp_seconds[1h]) == 0
+        and certmanager_certificate_expiration_timestamp_seconds - time() < 86400 * 2
+      for: 2h
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Certificate {{ $labels.cert_name }} may have failed renewal"
+        description: "Certificate {{ $labels.cert_name }} is expiring soon but no renewal activity detected in the last hour."
+
+  # ──────────────────────────────────────────────────────────────
+  # 6. BACKUP / DISASTER RECOVERY (Velero)
+  # ──────────────────────────────────────────────────────────────
+  - name: backup.rules
+    rules:
+    - alert: VeleroBackupFailed
+      expr: velero_backup_status{status="Failed"} > 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Velero backup {{ $labels.backup }} failed"
+        description: "Backup {{ $labels.backup }} failed with status Failed. Disaster recovery may be compromised."
+
+    - alert: VeleroBackupPartialFailure
+      expr: |
+        velero_backup_status{status="PartiallyFailed"} > 0
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Velero backup {{ $labels.backup }} partially failed"
+        description: "Backup {{ $labels.backup }} completed with partial failures — some resources may not be backed up."
+
+    - alert: VeleroBackupGap
+      expr: |
+        time() - time(velero_backup_time_since_last_backup{status="Completed"}) > 86400 * 2
+      for: 30m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "No successful Velero backup in over 48 hours"
+        description: "The last successful Velero backup was more than 48 hours ago. Backup schedule may be broken."
+
+    - alert: VeleroBackupSlow
+      expr: |
+        velero_backup_time_since_last_backup{status="Completed"}
+        - velero_backup_start_time{status="Completed"} > 3600
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Velero backup {{ $labels.backup }} took longer than 1 hour"
+        description: "Backup {{ $labels.backup }} took {{ $value }} seconds to complete — may indicate resource constraints or large data volumes."
+
+    - alert: VeleroBackupStorageUnavailable
+      expr: velero_backup_storage_location_status != "Available"
+      for: 15m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Velero backup storage location unavailable"
+        description: "Backup storage location {{ $labels.backup_storage_location }} is not available — new backups cannot be created."
+
+    - alert: VeleroRestoreFailed
+      expr: velero_restore_status{status="Failed"} > 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Velero restore {{ $labels.restore }} failed"
+        description: "Velero restore {{ $labels.restore }} has failed — disaster recovery action may have failed."
+
+  # ──────────────────────────────────────────────────────────────
+  # 7. OPA GATEKEEPER / POLICY
+  # ──────────────────────────────────────────────────────────────
+  - name: gatekeeper.rules
+    rules:
+    - alert: GatekeeperHighDenialRate
+      expr: |
+        sum(rate(gatekeeper_admission_controller_admission_request_total{rejection_reason!=""}[5m]))
+        / sum(rate(gatekeeper_admission_controller_admission_request_total[5m])) * 100 > 10
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Gatekeeper denial rate is high"
+        description: "Gatekeeper is denying {{ $value | humanizePercentage }} of admission requests — may indicate a policy issue or misconfiguration."
+
+    - alert: GatekeeperConstraintViolationSpike
+      expr: |
+        increase(gatekeeper_constraint_violation_total[1h]) > 50
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Gatekeeper constraint violations spike"
+        description: "Gatekeeper has recorded {{ $value }} constraint violations in the last hour — may indicate widespread policy violations."
+
+    - alert: GatekeeperWebhookLatencyHigh
+      expr: |
+        histogram_quantile(0.99, sum(rate(gatekeeper_admission_controller_admission_request_duration_seconds_bucket[5m])) by (le)) > 1
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Gatekeeper webhook latency is high"
+        description: "Gatekeeper p99 admission webhook latency is {{ $value }}s — may slow down deployments."
+
+  # ──────────────────────────────────────────────────────────────
+  # 8. OBSERVABILITY STACK HEALTH
+  # ──────────────────────────────────────────────────────────────
+  - name: observability.rules
+    rules:
+    - alert: PrometheusDown
+      expr: up{job="prometheus"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Prometheus is down"
+        description: "Prometheus instance {{ $labels.instance }} is not responding — metrics collection is interrupted."
+
+    - alert: PrometheusScrapeTargetDown
+      expr: up == 0
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Prometheus scrape target {{ $labels.job }}:{{ $labels.instance }} is down"
+        description: "Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }}."
+
+    - alert: PrometheusRuleEvaluationFailures
+      expr: |
+        increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Prometheus rule evaluation failures detected"
+        description: "Prometheus has {{ $value }} rule evaluation failures in the last 5 minutes — alerts may not fire."
+
+    - alert: PrometheusHighScrapeDuration
+      expr: |
+        histogram_quantile(0.95, sum(rate(prometheus_target_scrape_duration_seconds_bucket[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Prometheus scrape duration is high"
+        description: "Prometheus p95 scrape duration is {{ $value }}s — may indicate target issues or network problems."
+
+    - alert: AlertmanagerDown
+      expr: up{job="alertmanager"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Alertmanager is down"
+        description: "Alertmanager instance {{ $labels.instance }} is not responding — alerts will not be routed or notified."
+
+    - alert: GrafanaDown
+      expr: |
+        up{job="grafana"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Grafana is down"
+        description: "Grafana instance {{ $labels.instance }} is not responding — dashboards are unavailable."
+
+    - alert: PrometheusTSDBCompactionFailures
+      expr: |
+        increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Prometheus TSDB compaction failures"
+        description: "Prometheus has {{ $value }} TSDB compaction failures in the last hour — may indicate storage issues."
+
+    - alert: PrometheusTSDBWALCorruptions
+      expr: |
+        increase(prometheus_tsdb_wal_corruptions_total[1h]) > 0
+      for: 15m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Prometheus TSDB WAL corruption detected"
+        description: "Prometheus has detected {{ $value }} WAL corruptions in the last hour — data integrity may be compromised."
+
+    - alert: PrometheusRetentionNearCapacity
+      expr: |
+        prometheus_tsdb_blocks_loaded * 1024 * 1024 * 1024
+        / (prometheus_storage_blocks_total_bytes) * 100 > 90
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Prometheus TSDB storage near capacity"
+        description: "Prometheus TSDB is {{ $value | humanizePercentage }} full — consider increasing storage or reducing retention."
+
+    - alert: LokiDown
+      expr: up{job="loki"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Loki is down"
+        description: "Loki instance {{ $labels.instance }} is not responding — log queries will fail."
+
+    - alert: PromtailDown
+      expr: up{job="promtail"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Promtail is down"
+        description: "Promtail instance {{ $labels.instance }} is not responding — logs are not being collected."
+
