@@ -1,0 +1,20 @@
+# ServiceMonitor for Promtail — scrapes Promtail's own metrics (port 9080)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: promtail
+  namespace: monitoring
+  labels:
+    app: k8s
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: promtail
+  endpoints:
+  - port: http
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - loki
